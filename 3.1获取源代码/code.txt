@@ -1,0 +1,28 @@
+pipeline {
+    agent any
+    environment { 
+		def imageName = "sinhic/${single_project_name}"
+		def tag="latest"
+		def publish_server= "docker_client"
+    }
+    parameters {
+        // string(name:'multi_project_names', defaultValue: 'sinhic-common-pom,sinhic-common-lib', description: '多个项目之间用逗号隔开')
+        string(name:'maven_name', defaultValue: 'maven3.6.0', description: '全局工具配置maven的名称')
+		string(name:'registry_url', defaultValue: '10.101.43.196:5000', description: '镜像仓库地址')
+    }
+    tools { 
+        maven "${params.maven_name}"
+    }
+    stages {
+        stage('check out') {
+            steps {
+                // svn 通过 用户名、密码凭证
+                //checkout([$class: 'SubversionSCM', additionalCredentials: [], excludedCommitMessages: '', excludedRegions: '', excludedRevprop: '', excludedUsers: '', filterChangelog: false, ignoreDirPropChanges: false, includedRegions: '', locations: [[cancelProcessOnExternalsFail: true, credentialsId: '8ff06478-6ed5-43e4-8689-856029d6c7b3', depthOption: 'as-it-is-infinity', ignoreExternalsOption: true, local: '.', remote: 'svn://dev.juwins.com/juwins/IoT/codes/V1']], quietOperation: true, workspaceUpdater: [$class: 'UpdateUpdater']])
+				// git 通过 SSH 私钥、公钥认证
+                //checkout([$class: 'GitSCM', branches: [[name: '*/master']], doGenerateSubmoduleConfigurations: false, extensions: [], submoduleCfg: [], userRemoteConfigs: [[credentialsId: '773ebb24-7539-484a-a61c-78c3c210298a', url: 'ssh://git@github.com/cpaqyx/fastwave.cloud.framework.git']]])
+				// git 通过 用户名、密码认证
+                checkout([$class: 'GitSCM', branches: [[name: '*/master']], doGenerateSubmoduleConfigurations: false, extensions: [], submoduleCfg: [], userRemoteConfigs: [[credentialsId: '94f23d03-d194-4325-8013-a2f703c4a688', url: 'https://github.com/cpaqyx/fastwave.cloud.framework.git']]])
+            }
+        }
+    }
+}

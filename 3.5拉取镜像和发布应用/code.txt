@@ -1,0 +1,125 @@
+pipeline {
+    agent any
+    environment { 
+		def imageName = "${group_id}/${single_project_name}"
+		def tag="latest"
+		def publish_server= "docker_client"
+    }
+    parameters {
+        // string(name:'multi_project_names', defaultValue: 'sinhic-common-pom,sinhic-common-lib', description: '多个项目之间用逗号隔开')
+        string(name:'group_id', defaultValue: 'fastwave', description: '项目groupId')
+        string(name:'maven_name', defaultValue: 'maven3.6.0', description: '全局工具配置maven的名称')
+		string(name:'registry_url', defaultValue: '10.101.43.196:5000', description: '镜像仓库地址')
+		string(name:'port', defaultValue: '8761', description: '部署镜像端口')
+    }
+	// 注册工具
+    tools { 
+        maven "${params.maven_name}"
+    }	
+    stages {
+		// 获取或更新最新代码
+        stage('check out') {
+            steps {
+                // svn 通过 用户名、密码凭证
+                //checkout([$class: 'SubversionSCM', additionalCredentials: [], excludedCommitMessages: '', excludedRegions: '', excludedRevprop: '', excludedUsers: '', filterChangelog: false, ignoreDirPropChanges: false, includedRegions: '', locations: [[cancelProcessOnExternalsFail: true, credentialsId: '8ff06478-6ed5-43e4-8689-856029d6c7b3', depthOption: 'as-it-is-infinity', ignoreExternalsOption: true, local: '.', remote: 'svn://dev.juwins.com/juwins/IoT/codes/V1']], quietOperation: true, workspaceUpdater: [$class: 'UpdateUpdater']])
+				// git 通过 SSH 私钥、公钥认证
+                //checkout([$class: 'GitSCM', branches: [[name: '*/master']], doGenerateSubmoduleConfigurations: false, extensions: [], submoduleCfg: [], userRemoteConfigs: [[credentialsId: '773ebb24-7539-484a-a61c-78c3c210298a', url: 'ssh://git@github.com/cpaqyx/fastwave.cloud.framework.git']]])
+				// git 通过 用户名、密码认证
+                checkout([$class: 'GitSCM', branches: [[name: '*/master']], doGenerateSubmoduleConfigurations: false, extensions: [], submoduleCfg: [], userRemoteConfigs: [[credentialsId: '94f23d03-d194-4325-8013-a2f703c4a688', url: 'https://github.com/cpaqyx/fastwave.cloud.framework.git']]])
+            }
+        }
+		// maven 编译依赖项目
+        stage('build dependence') {
+            steps {
+                script {
+					sh '''
+					mvn -f fastwave-common-pom  clean install -Dautoconfig.skip=true -Dmaven.test.skip=false -Dmaven.test.failure.ignore=true
+					mvn -f fastwave-common-lib  clean install -Dautoconfig.skip=true -Dmaven.test.skip=false -Dmaven.test.failure.ignore=true
+					'''	
+				}  
+            }
+        }
+		// 本地镜像删除（如果存在）、生成新镜像
+        stage('build images') {
+            steps {
+                script {
+					sh '''
+					containerStr=`docker ps -a | grep -w ${imageName} | awk '{print $1}'`
+					imageStr=`docker images | grep -w $imageName  | awk '{print $3}'`
+					echo "container id:$containerStr"
+					echo "image id:$imageStr"
+					
+					if [ "$imageStr" !=  "" ] ; then
+						if [ "$containerStr" !=  "" ] ; then
+							#停掉容器
+							docker stop `docker ps -a | grep -w ${imageName}  | awk '{print $1}'`
+						
+							#删除容器
+							docker rm `docker ps -a | grep -w ${imageName}  | awk '{print $1}'`
+						
+							#删除镜像
+							docker rmi --force ${imageName}
+						else
+							 #删除镜像
+							docker rmi --force ${imageName}
+						
+						fi
+					fi
+					
+					mvn -f ${single_project_name}  clean install dockerfile:build -Dautoconfig.skip=true -Dmaven.test.skip=false -Dmaven.test.failure.ignore=true
+					'''	
+				}	
+                    
+            }
+        }
+        //删除仓库老镜像、重命名镜像、上传重命名新镜像
+        stage('upload image') {
+            steps {
+                script {
+					sh '''
+						#(1)判断本地是否已存在该项目的镜像，存在则先删除
+						regName=${registry_url}/$imageName
+						imageStr=`docker images | grep -w $regName  | awk '{print $3}'`
+						if [ "$imageStr" !=  "" ] ; then
+							#将仓库中的镜像名称删除
+							docker rmi ${registry_url}/${imageName}:$tag
+						fi
+
+						#(2)必须要先将镜像的名称给变成  域名或ip/镜像名
+						docker tag ${imageName}:${tag} ${registry_url}/$imageName
+
+						#(3)删除本地镜像
+						docker rmi $imageName:${tag}
+
+						#(4)推送到本地的仓库上
+						docker push ${registry_url}/$imageName
+					'''	
+				}
+			}
+		}
+		// 实际部署的机器上运行，把已经运行的镜像停止、删除
+		stage('destory old images') {
+            steps {
+				sshPublisher(publishers: [sshPublisherDesc(configName: "$publish_server", transfers: [sshTransfer(cleanRemote: false, excludes: '', execCommand: "/opt/jenkins_shell/deleteImage.sh $registry_url/$imageName $tag", execTimeout: 120000, flatten: false, makeEmptyDirs: false, noDefaultExcludes: false, patternSeparator: '[, ]+', remoteDirectory: '', remoteDirectorySDF: false, removePrefix: '', sourceFiles: '')], usePromotionTimestamp: false, useWorkspaceInPromotion: false, verbose: false)])
+            }
+        }
+		// 实际部署的机器上运行，从镜像仓库下载新镜像、运行、启动新镜像
+		stage('publish new images') {
+            steps {
+				sshPublisher(publishers: [sshPublisherDesc(configName: "$publish_server", transfers: [sshTransfer(cleanRemote: false, excludes: '', execCommand: "docker pull ${registry_url}/$imageName && docker run -d -p $port:$port -t ${registry_url}/$imageName:$tag", execTimeout: 120000, flatten: false, makeEmptyDirs: false, noDefaultExcludes: false, patternSeparator: '[, ]+', remoteDirectory: '', remoteDirectorySDF: false, removePrefix: '', sourceFiles: '')], usePromotionTimestamp: false, useWorkspaceInPromotion: false, verbose: false)])
+            }
+        }
+    }
+}
+
+
+
+选项参数名:
+single_project_name
+值：
+fastwave-cloud-eureka
+fastwave-cloud-zuul
+fastwave-service-admin
+
+查看仓库镜像地址：http://10.101.43.196:5000/v2/_catalog
+

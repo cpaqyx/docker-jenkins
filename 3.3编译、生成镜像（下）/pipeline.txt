@@ -1,0 +1,73 @@
+﻿pipeline {
+    agent any
+    environment { 
+		def imageName = "fastwave/${single_project_name}"
+		def tag="latest"
+		def publish_server= "docker_client"
+    }
+    tools { 
+        maven "maven-3.5.2"
+    }
+    stages {
+        stage('check out') {
+            steps {
+                //checkout([$class: 'GitSCM', branches: [[name: '*/master']], doGenerateSubmoduleConfigurations: false, extensions: [], submoduleCfg: [], userRemoteConfigs: [[credentialsId: '5fee282c-4a62-49f3-adf3-731720b2c723', url: 'https://github.com/cpaqyx/fastwave.cloud.framework.git']]])
+                checkout([$class: 'GitSCM', branches: [[name: '*/master']], doGenerateSubmoduleConfigurations: false, extensions: [], submoduleCfg: [], userRemoteConfigs: [[credentialsId: '2e7d81dd-2db7-4e27-8cb9-542611b8dd4a', url: 'ssh://git@github.com/cpaqyx/fastwave.cloud.framework.git']]])
+            }
+        }
+        stage('building dependency') {
+            steps {
+                sh '''
+					mvn -f fastwave-common-pom  clean install -Dautoconfig.skip=true -Dmaven.test.skip=false -Dmaven.test.failure.ignore=true
+					mvn -f fastwave-common-lib  clean install -Dautoconfig.skip=true -Dmaven.test.skip=false -Dmaven.test.failure.ignore=true
+				'''	
+            }
+        }
+        stage('building selected project') {
+            steps {
+                sh '''
+                
+                    containerStr=`docker ps -a | grep -w ${imageName} | awk '{print $1}'`
+					imageStr=`docker images | grep -w $imageName  | awk '{print $3}'`
+					echo "container id:$containerStr"
+					echo "image id:$imageStr"
+					
+					if [ "$imageStr" !=  "" ] ; then
+						if [ "$containerStr" !=  "" ] ; then
+							#停掉容器
+							docker stop `docker ps -a | grep -w ${imageName}  | awk '{print $1}'`
+						
+							#删除容器
+							docker rm `docker ps -a | grep -w ${imageName}  | awk '{print $1}'`
+						
+							#删除镜像
+							docker rmi --force ${imageName}
+						else
+							 #删除镜像
+							docker rmi --force ${imageName}
+						
+						fi
+					fi
+                
+					mvn -f ${single_project_name}  clean install dockerfile:build -Dautoconfig.skip=true -Dmaven.test.skip=false -Dmaven.test.failure.ignore=true
+					
+				'''	
+            }
+        }
+    }
+}
+		
+
+选项参数名:
+single_project_name
+值：
+fastwave-cloud-eureka
+fastwave-cloud-zuul
+fastwave-service-admin
+说明：请选择一个项目
+		
+		
+		
+		
+		
+		
