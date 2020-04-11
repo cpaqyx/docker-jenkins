@@ -1,0 +1,6 @@
+-- 查看所有镜像名称
+http://192.168.2.115:5000/v2/_catalog
+
+-- 查看某个镜像的所有标签（即有哪些版本）
+http://192.168.2.115:5000/v2/fastwave/fastwave-cloud-eureka/tags/list
+http://192.168.2.115:5000/v2/fastwave/fastwave-cloud-zuul/tags/list

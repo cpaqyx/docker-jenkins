@@ -1,0 +1,85 @@
+###############################单节点精简配置##############################################
+#server:
+#  port: 8761
+#eureka:
+#  client:
+#    register-with-eureka: false
+#    fetch-registry: false
+#    service-url:
+#      defaultZone: http://192.168.2.117:8761/eureka
+
+###############################单节点配置##############################################
+#server:
+#  port: 8761
+#
+#spring:
+#  application:
+#    name: eureka-server
+#  profiles:  
+#    active: dev
+#    
+#eureka:
+#  server:
+#    #关闭保护机制，以确保注册中心可以将不可用的实例剔除.
+#    #(注意：自我保护模式是一种应对网络异常的安全保护措施,使用自我保护模式，可以让Eureka集群更加的健壮、稳定)
+#    enableSelfPreservation: true                
+#    evictionIntervalTimerInMs: 30000            #eureka server清理无效节点的时间间隔，默认60000毫秒，即60秒
+#  client:
+#    register-with-eureka: false
+#    fetch-registry: false
+#    service-url:
+#      defaultZone: http://192.168.2.117:8761/eureka
+      
+#security:
+#  basic:
+#    enabled: true
+#  user:
+#    name: user
+#    password: password123
+
+###############################集群配置(HA)#############################################
+# （1）配置前需要到hosts文件中加入127.0.0.1 peer1,peer2,peer3
+# （2）运行jar包时需要带参数：java -jar springcloud-eureka-ha-0.0.1-SNAPSHOT.jar --spring.profiles.active=peer1
+# 启动第一个、第二个时会报异常，启动第三个后就不会再报错了
+# （3）Eureka Server注册服务的地址
+# eureka.client.service-url.defaultZone=http://peer1:8761/eureka/,http://peer2:8762/eureka,http://peer3:8763/eureka
+spring:
+  application:
+    name: EUREKA-HA
+---
+server:
+  port: 8761
+spring:
+  # 指定profile=peer1
+  profiles: peer1
+eureka:
+  instance:
+    # 指定当profile=peer1时，主机名是peer1
+    hostname: 192.168.2.115
+  client:
+    service-url:
+      # 将自己注册到peer2、peer3这个Eureka上面去
+      defaultZone: http://192.168.2.116:8761/eureka/,http://192.168.2.117:8761/eureka/
+---
+server:
+  port: 8761
+spring:
+  profiles: peer2
+eureka:
+  instance:
+    hostname: 192.168.2.116
+  client:
+    service-url:
+      defaultZone: http://192.168.2.115:8761/eureka/,http://192.168.2.117:8761/eureka/
+---
+server:
+  port: 8761
+spring:
+  profiles: peer3
+eureka:
+  instance:
+    hostname: 192.168.2.117
+  client:
+    service-url:
+      defaultZone: http://192.168.2.115:8761/eureka/,http://192.168.2.116:8761/eureka/
+  

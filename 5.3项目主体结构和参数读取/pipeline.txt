@@ -1,0 +1,56 @@
+pipeline {
+    agent any
+	// 注册工具
+    tools { 
+        maven "${maven_name}"
+    }	
+    stages {
+		// 获取或更新最新代码
+        stage('check out') {
+            steps {// git 通过 用户名、密码认证
+                //checkout([$class: 'GitSCM', branches: [[name: '*/master']], doGenerateSubmoduleConfigurations: false, extensions: [], submoduleCfg: [], userRemoteConfigs: [[credentialsId: '5fee282c-4a62-49f3-adf3-731720b2c723', url: 'https://github.com/cpaqyx/fastwave.cloud.framework.git']]])
+                echo 'skip checkout'
+            }
+        }
+		// maven 编译依赖项目
+        stage('build dependence') {
+            steps {
+                script {
+					//sh '''
+				//	mvn -f fastwave-common-pom  clean install -Dautoconfig.skip=true -Dmaven.test.skip=false -Dmaven.test.failure.ignore=true
+				//	mvn -f fastwave-common-lib  clean install -Dautoconfig.skip=true -Dmaven.test.skip=false -Dmaven.test.failure.ignore=true
+				//	'''	
+				echo 'skip build'
+				}  
+            }
+        }
+		// 本地镜像删除（如果存在）、生成新镜像
+        stage('test get param') {
+            steps {
+                script {
+                    echo "registry_url=${registry_url}"
+					def selectedProjectNames = "${select_project_name}".split(',')
+					def selectedSshNames = "${select_ssh_name}".split(',')
+					for(int i=0; i<selectedProjectNames.size();i++)
+					{
+					    def selectedProjectName = selectedProjectNames[i]
+					    def selectedProjectDir = selectedProjectName.split('@')[0]
+					    def selectedProjectPort = selectedProjectName.split('@')[1]
+					    
+					    echo "######### selectedProjectDir=${selectedProjectDir},selectedProjectPort=${selectedProjectPort}"
+					    
+					    
+					    
+					    for(int j=0; j<selectedSshNames.size();j++)
+					    {
+					        def selectedSshName = selectedSshNames[j]
+					        echo "selectedSshName=${selectedSshName}"
+					    }
+					    
+					}
+				}	
+                    
+            }
+        }
+    }
+}

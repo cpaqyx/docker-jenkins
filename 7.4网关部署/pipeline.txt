@@ -1,0 +1,107 @@
+pipeline {
+    agent any
+	// 注册工具
+    tools { 
+        maven "${maven_name}"
+    }	
+    stages {
+		// 获取或更新最新代码
+        stage('check out') {
+            //返回为true时才会执行下面的步骤
+            when {expression {
+                   return  (select_option_type.indexOf('full_publish') >= 0 || select_option_type.indexOf('checkout') >= 0)
+            }}
+            steps {// git 通过 用户名、密码认证
+                //checkout([$class: 'GitSCM', branches: [[name: '*/master']], doGenerateSubmoduleConfigurations: false, extensions: [], submoduleCfg: [], userRemoteConfigs: [[credentialsId: '5fee282c-4a62-49f3-adf3-731720b2c723', url: 'https://github.com/cpaqyx/fastwave.cloud.framework.git']]])
+                echo 'skip checkout'
+            }
+        }
+		// maven 编译依赖项目
+        stage('build dependence') {
+            //返回为true时才会执行下面的步骤
+            when {expression {
+		           //full_publish,checkout@build@upload,pull@bak@run,rollback
+                   return  (select_option_type.indexOf('full_publish') >= 0 || select_option_type.indexOf('build') >= 0)
+            }}
+            steps {
+                script {
+					sh '''
+					mvn -f fastwave-common-pom  clean install -Dautoconfig.skip=true -Dmaven.test.skip=false -Dmaven.test.failure.ignore=true
+					mvn -f fastwave-common-lib  clean install -Dautoconfig.skip=true -Dmaven.test.skip=false -Dmaven.test.failure.ignore=true
+					'''	
+				//echo 'skip build'
+				}  
+            }
+        }
+		// 本地镜像删除（如果存在）、生成新镜像
+        stage('build&upload&run images') {
+            //返回为true时才会执行下面的步骤
+            when {expression {
+		           //full_publish,checkout@build@upload,pull@bak@run,rollback
+                   return  (select_option_type.indexOf('full_publish') >= 0 || select_option_type.indexOf('run') >= 0)
+            }}
+            steps {
+                script {
+                    echo "registry_url=${registry_url}"
+					def selectedProjectNames = "${select_project_name}".split(',')
+					def selectedSshNames = "${select_ssh_name}".split(',')
+					for(int i=0; i<selectedProjectNames.size();i++)
+					{
+					    def selectedProjectName = selectedProjectNames[i]
+					    def selectedProjectDir = selectedProjectName.split('@')[0]
+					    def selectedProjectPort = selectedProjectName.split('@')[1]
+					    
+					    sh "$shell_path/delete_image.sh $group_id/$selectedProjectDir $latest_tag"
+					
+					    sh "mvn -f $selectedProjectDir  clean install dockerfile:build -Dautoconfig.skip=true -Dmaven.test.skip=false -Dmaven.test.failure.ignore=true"
+
+                        sh "$shell_path/upload_image.sh $group_id/$selectedProjectDir $latest_tag $registry_url"
+                         
+					    echo "######### selectedProjectDir=${selectedProjectDir},selectedProjectPort=${selectedProjectPort}"
+					    
+					    for(int j=0; j<selectedSshNames.size();j++)
+					    {
+					        def selectedSshName = selectedSshNames[j]
+					        echo "selectedSshName=${selectedSshName}"
+					        
+					        
+                            sshPublisher(publishers: [sshPublisherDesc(configName: "$selectedSshName", transfers: [sshTransfer(cleanRemote: false, excludes: '', execCommand: "/opt/jenkins_shell/deploy_image.sh $group_id/$selectedProjectDir $latest_tag $selectedProjectPort $selectedProjectPort $registry_url $eureka_url $image_bak_tag $image_params", execTimeout: 120000, flatten: false, makeEmptyDirs: false, noDefaultExcludes: false, patternSeparator: '[, ]+', remoteDirectory: '', remoteDirectorySDF: false, removePrefix: '', sourceFiles: '')], usePromotionTimestamp: false, useWorkspaceInPromotion: false, verbose: false)])
+
+					    }
+					    
+					}
+				}	
+                    
+            }
+		}
+            
+		stage('roll back') {
+			//返回为true时才会执行下面的步骤
+			when {expression {
+				   //full_publish,checkout@build@upload,pull@bak@run,rollback
+				   return  (select_option_type.indexOf('rollback') >= 0)
+			}}
+			steps {
+				script {
+					def selectedProjects = "${select_project_name}".split(',')
+					def selectedSshName = "${select_ssh_name}".split(',')
+					for (int i = 0; i < selectedProjects.size(); ++i) {
+						//（1）从选项中分析出项目名（或项目文件夹）
+						def projectName = selectedProjects[i]
+						echo "#########projectName:${projectName}###################"
+						def projectDir = projectName.split('@')[0]
+						def port = projectName.split('@')[1]
+						def imageName = "${group_id}/${projectDir}"
+						
+						//（2）回滚每一台集群机器
+						for (int j = 0; j < selectedSshName.size(); ++j) {	
+							def curSshName = selectedSshName[j]
+							sshPublisher(publishers: [sshPublisherDesc(configName: "$curSshName", transfers: [sshTransfer(cleanRemote: false, excludes: '', execCommand: "/opt/jenkins_shell/rollback_service.sh $imageName $latest_tag $port $port $registry_url $eureka_url $image_bak_tag $image_params", execTimeout: 120000, flatten: false, makeEmptyDirs: false, noDefaultExcludes: false, patternSeparator: '[, ]+', remoteDirectory: '', remoteDirectorySDF: false, removePrefix: '', sourceFiles: '')], usePromotionTimestamp: false, useWorkspaceInPromotion: false, verbose: false)])
+						}
+					}
+					echo "roll back"
+				}  
+			}
+		}
+    }
+}

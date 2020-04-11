@@ -1,0 +1,5 @@
+#所有需要修改配置文 件的参数放这里
+image_params=--eureka.client.serviceUrl.defaultZone=http://192.168.2.115:8761/eureka,http://192.168.2.116:8761/eureka,http://192.168.2.117:8761/eureka
+
+http://192.168.2.115:8762/fastwave-service-auth/user/login?username=xxpwd=xx
+http://192.168.2.115:8763/user/login?username=xxpwd=xx

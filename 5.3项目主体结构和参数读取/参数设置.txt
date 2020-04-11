@@ -1,0 +1,34 @@
+参数1：######################################
+select_ssh_name
+选择要部署的机器
+fastwave_dev_master,fastwave_dev_slave1,fastwave_dev_slave2,fastwave_dev_slave3
+fastwave_dev_master
+开发主节点,开发从节点1,开发从节点2,开发从节点3
+
+
+参数2：######################################
+select_project_name
+选择发布的服务
+fastwave-cloud-eureka@8761,fastwave-cloud-zuul@8762,fastwave-service-auth@8763,fastwave-service-admin@8764
+fastwave-cloud-eureka@8761
+注册中心,API网关,认证中心,配置服务
+
+
+参数3：回滚才会用到######################################
+select_option_type
+发布操作类型（如完整发布、回滚等）
+full_publish,checkout@build@upload,pull@bak@run,rollback
+full_publish
+完整发布流程(拉取源码、编译打包、生成镜像、上传到仓库、在目标机器部署),仅生成镜像(拉取源码、编译打包、生成镜像),仅部署(直接仓库最新镜像),回滚到上一个版本(部署失败时使用)
+
+
+
+作业环境属性配置：复制到Prepare an environment for the run--》Properties Content
+# 项目groupId
+group_id=fastwave
+#全局工具配置maven的名称
+maven_name=maven3.6.0
+#镜像仓库地址
+registry_url=192.168.2.115:5000
+#注册中心地址
+eureka_url=192.168.2.117:8761

@@ -1,0 +1,1 @@
+curl -X PUT -i  http://192.168.2.117:8761/eureka/apps/fastwave-cloud-zuul/fastwave-cloud-zuul:192.168.2.117:8762/status?value=OUT_OF_SERVICE

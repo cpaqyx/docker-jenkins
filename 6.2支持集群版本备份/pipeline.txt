@@ -1,0 +1,67 @@
+pipeline {
+    agent any
+    environment {
+		def tag="latest"
+		def bak_tag="bak"
+    }
+    parameters {
+        string(name:'group_id', defaultValue: 'fastwave', description: '项目groupId')
+        string(name:'maven_name', defaultValue: 'maven3.6.0', description: '全局工具配置maven的名称')
+		string(name:'registry_url', defaultValue: '10.101.43.196:5000', description: '镜像仓库地址')
+		string(name:'eureka_url', defaultValue: '10.101.43.197:8761', description: '注册中心地址')
+    }
+	// 注册工具
+    tools {
+        maven "${params.maven_name}"
+    }	
+    stages {
+		// 获取或更新最新代码
+        stage('check out') {
+            steps {
+				checkout([$class: 'GitSCM', branches: [[name: '*/master']], doGenerateSubmoduleConfigurations: false, extensions: [], submoduleCfg: [], userRemoteConfigs: [[credentialsId: '94f23d03-d194-4325-8013-a2f703c4a688', url: 'https://github.com/cpaqyx/fastwave.cloud.framework.git']]])
+                echo "check out OK"
+            }
+        }
+		// maven 编译依赖项目
+        stage('build dependence') {
+            steps {
+                script {
+					sh '''
+					mvn -f fastwave-common-pom  clean install -Dautoconfig.skip=true -Dmaven.test.skip=false -Dmaven.test.failure.ignore=true
+					mvn -f fastwave-common-lib  clean install -Dautoconfig.skip=true -Dmaven.test.skip=false -Dmaven.test.failure.ignore=true
+					'''	
+					echo "build dependence OK"
+				}  
+            }
+        }
+		// 本地镜像删除（如果存在）、生成新镜像、部署镜像
+        stage('build&upload&run images') {
+            steps {
+                script {
+					def selectedProjects = "${select_project_name}".split(',')
+					def selectedSshName = "${select_ssh_name}".split(',')
+                    for (int i = 0; i < selectedProjects.size(); ++i) {
+						//（1）从选项中分析出项目名（或项目文件夹）
+						def projectName = selectedProjects[i]
+						echo "#########projectName:${projectName}###################"
+						def projectDir = projectName.split('@')[0]
+						def port = projectName.split('@')[1]
+						def imageName = "${group_id}/${projectDir}"
+						//（2）清除本地已存在的镜像
+						sh "/opt/jenkins_shell/delete_image.sh $imageName $tag"
+						//（3）重新生成本地镜像
+						sh "mvn -f $projectDir clean install dockerfile:build -Dautoconfig.skip=true -Dmaven.test.skip=false -Dmaven.test.failure.ignore=true"
+						//（4）上传镜像到镜像仓库
+						sh "/opt/jenkins_shell/upload_image.sh $imageName $tag $registry_url"
+						//（5）部署到每一台集群机器上
+						for (int j = 0; j < selectedSshName.size(); ++j) {	
+							def curSshName = selectedSshName[j]
+							sshPublisher(publishers: [sshPublisherDesc(configName: "$curSshName", transfers: [sshTransfer(cleanRemote: false, excludes: '', execCommand: "/opt/jenkins_shell/deploy_image.sh $imageName $tag $port $port $registry_url $eureka_url $bak_tag", execTimeout: 120000, flatten: false, makeEmptyDirs: false, noDefaultExcludes: false, patternSeparator: '[, ]+', remoteDirectory: '', remoteDirectorySDF: false, removePrefix: '', sourceFiles: '')], usePromotionTimestamp: false, useWorkspaceInPromotion: false, verbose: false)])
+						}
+                    }
+				}
+				echo "build&upload&run images OK"
+            }
+        }		
+    }
+}

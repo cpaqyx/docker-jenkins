@@ -1,0 +1,4 @@
+vi /etc/docker/daemon.json
+输入如下内容，保存退出：
+{"insecure-registries":["192.168.66.100:5000"]}
+其中192.168.66.100:5000是镜像仓库机器IP地址和端口
